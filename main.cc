@@ -12,14 +12,13 @@
 
 #include "main.hh"
 
-ChatDialog * chatDialog;
-NetSocket * socket;
+ChatDialog *chatDialog;
+NetSocket *socket;
 
 int origin;
 quint32 seqNum;
 
-ChatDialog::ChatDialog()
-{
+ChatDialog::ChatDialog() {
 	setWindowTitle("P2Papp");
 
 	// Read-only text box where we display messages from everyone.
@@ -49,8 +48,7 @@ ChatDialog::ChatDialog()
 		this, SLOT(gotReturnPressed()));
 }
 
-void ChatDialog::gotReturnPressed()
-{
+void ChatDialog::gotReturnPressed() {
 	// Initially, just echo the string locally.
 	// Insert some networking code here...
 	qDebug() << "FIX: send message to other peers: " << textline->text();
@@ -65,10 +63,9 @@ void ChatDialog::gotReturnPressed()
 }
 
 void ChatDialog::displayText(QMap<QString, QVariant> inputMap) {
-
-    if(inputMap.contains("ChatText") && (inputMap.contains("Origin"))) {
-        // don't send to same port
-        if(QString::number(origin) != inputMap["Origin"].toString()) {
+    // don't repeat print to sender since we printed on gotReturnPressed()
+    if (inputMap.contains("ChatText") && (inputMap.contains("Origin"))) {
+        if (QString::number(origin) != inputMap["Origin"].toString()) {
             QString message_string = inputMap["ChatText"].toString();
             QString origin_string = inputMap["Origin"].toString();
             QString s = origin_string + ": " + message_string;
@@ -77,8 +74,7 @@ void ChatDialog::displayText(QMap<QString, QVariant> inputMap) {
     }
 }
 
-NetSocket::NetSocket()
-{
+NetSocket::NetSocket() {
 	// Pick a range of four UDP ports to try to allocate by default,
 	// computed based on my Unix user ID.
 	// This makes it trivial for up to four P2Papp instances per user
@@ -128,8 +124,7 @@ void NetSocket::receiveMessage() {
 }
 
 
-bool NetSocket::bind()
-{
+bool NetSocket::bind() {
 	// Try to bind to each of the range myPortMin..myPortMax in turn.
 	for (int p = myPortMin; p <= myPortMax; p++) {
 		if (QUdpSocket::bind(p)) {
@@ -145,8 +140,7 @@ bool NetSocket::bind()
 	return false;
 }
 
-int main(int argc, char **argv)
-{
+int main(int argc, char **argv) {
 	// Initialize Qt toolkit
 	QApplication app(argc,argv);
 
@@ -159,10 +153,10 @@ int main(int argc, char **argv)
 	if (!sock.bind())
 		exit(1);
 
+	// set up some env vars
     socket = &sock;
     chatDialog = &dialog;
 
 	// Enter the Qt main loop; everything else is event driven
 	return app.exec();
 }
-
