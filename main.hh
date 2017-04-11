@@ -33,6 +33,8 @@ public:
 	bool bind();
     void serializeMessage(QString);
     void sendMessage(QByteArray);
+
+public slots:
     void receiveMessage();
 
 private:

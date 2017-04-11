@@ -6,6 +6,9 @@
 #include <QVBoxLayout>
 #include <QApplication>
 #include <QDebug>
+#include <QMap>
+#include <QVariant>
+#include <QDataStream>
 
 #include "main.hh"
 
@@ -14,8 +17,6 @@ NetSocket * socket;
 
 int origin;
 quint32 seqNum;
-
-
 
 ChatDialog::ChatDialog()
 {
@@ -53,8 +54,9 @@ void ChatDialog::gotReturnPressed()
 	// Initially, just echo the string locally.
 	// Insert some networking code here...
 	qDebug() << "FIX: send message to other peers: " << textline->text();
+    QString displayText = QString::number(origin) +": " + textline->text();
+    textview->append(displayText);
 
-    textview->append(QString(origin) +": " + textline->text());
     QString message = textline->text();
     socket->serializeMessage(message);
 
@@ -63,12 +65,14 @@ void ChatDialog::gotReturnPressed()
 }
 
 void ChatDialog::displayText(QMap<QString, QVariant> inputMap) {
-    if(inputMap.contains("ChatText")) {
-        if(inputMap.contains("Origin")) {
-            if(QString(origin) != inputMap["Origin"]) {
-                QString message_text = inputMap["ChatText"].toString();
-                textview->append(inputMap["Origin"].toInt() + ": " + message_text);
-            }
+
+    if(inputMap.contains("ChatText") && (inputMap.contains("Origin"))) {
+        // don't send to same port
+        if(QString::number(origin) != inputMap["Origin"].toString()) {
+            QString message_string = inputMap["ChatText"].toString();
+            QString origin_string = inputMap["Origin"].toString();
+            QString s = origin_string + ": " + message_string;
+            textview->append(s);
         }
     }
 }
@@ -86,6 +90,7 @@ NetSocket::NetSocket()
 	myPortMax = myPortMin + 3;
 }
 
+
 void NetSocket::serializeMessage(QString message) {
     QMap<QString, QVariant> map;
     seqNum++;
@@ -93,22 +98,15 @@ void NetSocket::serializeMessage(QString message) {
     map.insert("Origin", QVariant(origin));
     map.insert("SeqNum", QVariant(seqNum));
 
-    qDebug() << map;
-
     QByteArray serializedMap;
-    QDataStream *  dataStream = new QDataStream(&serializedMap, QIODevice::WriteOnly);
-    qDebug() << *dataStream;
+    QDataStream * dataStream = new QDataStream(&serializedMap, QIODevice::WriteOnly);
     (*dataStream) << map;
-    delete dataStream;
 
-    socket->sendMessage(serializedMap);
-}
-
-void NetSocket::sendMessage(QByteArray message) {
     for(int i = myPortMin; i <= myPortMax; i++) {
-        writeDatagram(message, QHostAddress::LocalHost, i);
+        socket->writeDatagram(serializedMap, QHostAddress::LocalHost, i);
     }
 
+    delete dataStream;
 }
 
 void NetSocket::receiveMessage() {
@@ -116,16 +114,16 @@ void NetSocket::receiveMessage() {
     QHostAddress sender;
     u_int16_t port;
 
-    while(hasPendingDatagrams()) {
+    while(socket->hasPendingDatagrams()) {
         datagram.resize(pendingDatagramSize());
         readDatagram(datagram.data(), datagram.size(), &sender, &port);
 
         // convert ByteArray to map
-        QMap<QString, QVariant> map;
+        QMap<QString, QVariant> inputMap;
         QDataStream dataStream(&datagram, QIODevice::ReadOnly);
-        dataStream >> map;
+        dataStream >> inputMap;
 
-        chatDialog->displayText(map);
+        chatDialog->displayText(inputMap);
     }
 }
 
@@ -162,7 +160,7 @@ int main(int argc, char **argv)
 		exit(1);
 
     socket = &sock;
-
+    chatDialog = &dialog;
 
 	// Enter the Qt main loop; everything else is event driven
 	return app.exec();
