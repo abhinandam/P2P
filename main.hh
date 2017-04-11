@@ -15,7 +15,7 @@ public:
 
 public slots:
 	void gotReturnPressed();
-    void displayText(QString);
+    void displayText(QMap<QString, QVariant>);
 
 private:
 	QTextEdit *textview;
@@ -31,15 +31,12 @@ public:
 
 	// Bind this socket to a P2Papp-specific default port.
 	bool bind();
-    void receiveMessage();
+    void serializeMessage(QString);
     void sendMessage(QByteArray);
-    void serializeMessage(QString message);
+    void receiveMessage();
 
 private:
     int myPortMin, myPortMax;
-    quint32 seqNum;
-    QString origin;
-    QMap<QString, QVariant> messageMap;
 
 };
 

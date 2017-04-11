@@ -38,7 +38,7 @@ static const uint qt_meta_data_ChatDialog[] = {
 
 static const char qt_meta_stringdata_ChatDialog[] = {
     "ChatDialog\0\0gotReturnPressed()\0"
-    "displayText(QString)\0"
+    "displayText(QMap<QString,QVariant>)\0"
 };
 
 void ChatDialog::qt_static_metacall(QObject *_o, QMetaObject::Call _c, int _id, void **_a)
@@ -48,7 +48,7 @@ void ChatDialog::qt_static_metacall(QObject *_o, QMetaObject::Call _c, int _id, 
         ChatDialog *_t = static_cast<ChatDialog *>(_o);
         switch (_id) {
         case 0: _t->gotReturnPressed(); break;
-        case 1: _t->displayText((*reinterpret_cast< QString(*)>(_a[1]))); break;
+        case 1: _t->displayText((*reinterpret_cast< QMap<QString,QVariant>(*)>(_a[1]))); break;
         default: ;
         }
     }

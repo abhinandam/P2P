@@ -1,6 +1,7 @@
 
 #include <unistd.h>
 #include <iostream>
+#include <string>
 
 #include <QVBoxLayout>
 #include <QApplication>
@@ -10,6 +11,11 @@
 
 ChatDialog * chatDialog;
 NetSocket * socket;
+
+int origin;
+quint32 seqNum;
+
+
 
 ChatDialog::ChatDialog()
 {
@@ -47,20 +53,24 @@ void ChatDialog::gotReturnPressed()
 	// Initially, just echo the string locally.
 	// Insert some networking code here...
 	qDebug() << "FIX: send message to other peers: " << textline->text();
+
+    textview->append(QString(origin) +": " + textline->text());
     QString message = textline->text();
     socket->serializeMessage(message);
-
-    textview->append(QString("Port Num: ") + textline->text());
 
 	// Clear the textline to get ready for the next input message.
 	textline->clear();
 }
 
-void ChatDialog::displayText(QString messageText) {
-        qDebug() << "here5";
-        //textview->append(messageText);
-        textview->append("works");
-        qDebug() << "here6";
+void ChatDialog::displayText(QMap<QString, QVariant> inputMap) {
+    if(inputMap.contains("ChatText")) {
+        if(inputMap.contains("Origin")) {
+            if(QString(origin) != inputMap["Origin"]) {
+                QString message_text = inputMap["ChatText"].toString();
+                textview->append(inputMap["Origin"].toInt() + ": " + message_text);
+            }
+        }
+    }
 }
 
 NetSocket::NetSocket()
@@ -74,36 +84,30 @@ NetSocket::NetSocket()
 	// We use the range from 32768 to 49151 for this purpose.
 	myPortMin = 32768 + (getuid() % 4096)*4;
 	myPortMax = myPortMin + 3;
-    seqNum = 0;
-    origin = "";
 }
 
 void NetSocket::serializeMessage(QString message) {
     QMap<QString, QVariant> map;
+    seqNum++;
     map.insert("ChatText", QVariant(message));
     map.insert("Origin", QVariant(origin));
     map.insert("SeqNum", QVariant(seqNum));
-    seqNum++;
 
-    qDebug() << "here";
+    qDebug() << map;
+
     QByteArray serializedMap;
-    QDataStream * dataStream = new QDataStream(&serializedMap, QIODevice::WriteOnly);
-        qDebug() << "here2";
-    (*dataStream) << serializedMap;
+    QDataStream *  dataStream = new QDataStream(&serializedMap, QIODevice::WriteOnly);
+    qDebug() << *dataStream;
+    (*dataStream) << map;
     delete dataStream;
 
-    sendMessage(serializedMap);
+    socket->sendMessage(serializedMap);
 }
 
 void NetSocket::sendMessage(QByteArray message) {
-
-        qDebug() << "here3";
     for(int i = myPortMin; i <= myPortMax; i++) {
         writeDatagram(message, QHostAddress::LocalHost, i);
     }
-        qDebug() << "here4";
-
-    chatDialog->displayText(QString("test message"));
 
 }
 
@@ -112,18 +116,16 @@ void NetSocket::receiveMessage() {
     QHostAddress sender;
     u_int16_t port;
 
-    while(socket->hasPendingDatagrams()) {
-        datagram.resize(socket->pendingDatagramSize());
+    while(hasPendingDatagrams()) {
+        datagram.resize(pendingDatagramSize());
         readDatagram(datagram.data(), datagram.size(), &sender, &port);
-        QMap<QString, QVariant> messageMap;
+
+        // convert ByteArray to map
+        QMap<QString, QVariant> map;
         QDataStream dataStream(&datagram, QIODevice::ReadOnly);
-        dataStream >> messageMap;
+        dataStream >> map;
 
-        QString message = messageMap.value("ChatText").toString();
-        QString origin = messageMap.value("Origin").toString();
-        quint32 seqNum = messageMap.value("SeqNum").toUInt();
-
-        chatDialog->displayText(QString("test message"));
+        chatDialog->displayText(map);
     }
 }
 
@@ -133,6 +135,7 @@ bool NetSocket::bind()
 	// Try to bind to each of the range myPortMin..myPortMax in turn.
 	for (int p = myPortMin; p <= myPortMax; p++) {
 		if (QUdpSocket::bind(p)) {
+            origin = p;
 			qDebug() << "bound to UDP port " << p;
             connect(this, SIGNAL(readyRead()), this, SLOT(receiveMessage()));
 			return true;
