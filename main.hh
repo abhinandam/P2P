@@ -31,8 +31,9 @@ public:
 
 	// Bind this socket to a P2Papp-specific default port.
 	bool bind();
-    void serializeMessage(QString);
+    QByteArray serializeMessage(QString);
     void sendMessage(QByteArray);
+    void sendToNeighbor(QByteArray);
 
 public slots:
     void receiveMessage();

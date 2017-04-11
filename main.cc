@@ -6,9 +6,7 @@
 #include <QVBoxLayout>
 #include <QApplication>
 #include <QDebug>
-#include <QMap>
-#include <QVariant>
-#include <QDataStream>
+
 
 #include "main.hh"
 
@@ -16,6 +14,12 @@ ChatDialog * chatDialog;
 NetSocket * socket;
 
 int origin;
+int currPort;
+int resendPort;
+
+QMap<QString, QVariant> wantMap;
+QMap<QString, quint32> log;
+
 quint32 seqNum;
 
 ChatDialog::ChatDialog()
@@ -49,16 +53,15 @@ ChatDialog::ChatDialog()
 		this, SLOT(gotReturnPressed()));
 }
 
-void ChatDialog::gotReturnPressed()
-{
-	// Initially, just echo the string locally.
-	// Insert some networking code here...
-	qDebug() << "FIX: send message to other peers: " << textline->text();
+void ChatDialog::gotReturnPressed() {
     QString displayText = QString::number(origin) +": " + textline->text();
     textview->append(displayText);
 
     QString message = textline->text();
-    socket->serializeMessage(message);
+
+    // serialized and send
+    QByteArray rumor = socket->serializeMessage(message);
+    socket->sendToNeighbor(rumor);
 
 	// Clear the textline to get ready for the next input message.
 	textline->clear();
@@ -91,22 +94,40 @@ NetSocket::NetSocket()
 }
 
 
-void NetSocket::serializeMessage(QString message) {
+QByteArray NetSocket::serializeMessage(QString message) {
     QMap<QString, QVariant> map;
-    seqNum++;
     map.insert("ChatText", QVariant(message));
     map.insert("Origin", QVariant(origin));
-    map.insert("SeqNum", QVariant(seqNum));
+    map.insert("SeqNum", QVariant(seqNum++));
 
     QByteArray serializedMap;
     QDataStream * dataStream = new QDataStream(&serializedMap, QIODevice::WriteOnly);
     (*dataStream) << map;
 
-    for(int i = myPortMin; i <= myPortMax; i++) {
-        socket->writeDatagram(serializedMap, QHostAddress::LocalHost, i);
-    }
-
     delete dataStream;
+    return serializedMap;
+}
+
+void NetSocket::sendToNeighbor(QByteArray message) {
+
+    int neighbor;
+    if(origin == myPortMin) {
+        neighbor = origin + 1;
+    } else if (origin == myPortMax) {
+         neighbor = origin - 1;
+    }
+    // randomly choose neighbor
+    else {
+        if(rand() % 2) {
+            neighbor = origin + 1;
+        }
+        else {
+            neighbor = origin - 1;
+        }
+    }
+    socket->writeDatagram(message, QHostAddress::LocalHost, neighbor);
+    qDebug() << QString("neighbor number " + QString::number(neighbor));
+    resendPort = neighbor;
 }
 
 void NetSocket::receiveMessage() {
@@ -161,6 +182,7 @@ int main(int argc, char **argv)
 
     socket = &sock;
     chatDialog = &dialog;
+    srand(time(0));
 
 	// Enter the Qt main loop; everything else is event driven
 	return app.exec();
