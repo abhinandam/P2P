@@ -6,6 +6,9 @@
 #include <QLineEdit>
 #include <QUdpSocket>
 
+typedef QMap<QString,QVariant> MsgMap;
+typedef QMap<QString, quint32>::iterator wantMapIter;
+
 class ChatDialog : public QDialog
 {
 	Q_OBJECT
@@ -34,6 +37,8 @@ public:
     QByteArray serializeMessage(QString);
     void sendMessage(QByteArray);
     void sendToNeighbor(QByteArray);
+    void checkStatus(QMap<QString, QMap<QString, quint32> >);
+    void checkRumor(MsgMap);
 
 public slots:
     void receiveMessage();

@@ -10,15 +10,15 @@
 
 #include "main.hh"
 
+
 ChatDialog * chatDialog;
 NetSocket * socket;
 
 int origin;
-int currPort;
 int resendPort;
 
-QMap<QString, QVariant> wantMap;
-QMap<QString, quint32> log;
+QMap<QString, QMap<quint32, MsgMap> > messageDigest;
+QMap<QString, quint32> wantMap;
 
 quint32 seqNum;
 
@@ -26,29 +26,15 @@ ChatDialog::ChatDialog()
 {
 	setWindowTitle("P2Papp");
 
-	// Read-only text box where we display messages from everyone.
-	// This widget expands both horizontally and vertically.
 	textview = new QTextEdit(this);
 	textview->setReadOnly(true);
-
-	// Small text-entry box the user can enter messages.
-	// This widget normally expands only horizontally,
-	// leaving extra vertical space for the textview widget.
-	//
-	// You might change this into a read/write QTextEdit,
-	// so that the user can easily enter multi-line messages.
 	textline = new QLineEdit(this);
 
-	// Lay out the widgets to appear in the main window.
-	// For Qt widget and layout concepts see:
-	// http://doc.qt.nokia.com/4.7-snapshot/widgets-and-layouts.html
 	QVBoxLayout *layout = new QVBoxLayout();
 	layout->addWidget(textview);
 	layout->addWidget(textline);
 	setLayout(layout);
 
-	// Register a callback on the textline's returnPressed signal
-	// so that we can send the message entered by the user.
 	connect(textline, SIGNAL(returnPressed()),
 		this, SLOT(gotReturnPressed()));
 }
@@ -67,7 +53,7 @@ void ChatDialog::gotReturnPressed() {
 	textline->clear();
 }
 
-void ChatDialog::displayText(QMap<QString, QVariant> inputMap) {
+void ChatDialog::displayText(MsgMap inputMap) {
 
     if(inputMap.contains("ChatText") && (inputMap.contains("Origin"))) {
         // don't send to same port
@@ -80,26 +66,39 @@ void ChatDialog::displayText(QMap<QString, QVariant> inputMap) {
     }
 }
 
-NetSocket::NetSocket()
-{
-	// Pick a range of four UDP ports to try to allocate by default,
-	// computed based on my Unix user ID.
-	// This makes it trivial for up to four P2Papp instances per user
-	// to find each other on the same host,
-	// barring UDP port conflicts with other applications
-	// (which are quite possible).
-	// We use the range from 32768 to 49151 for this purpose.
+NetSocket::NetSocket() {
 	myPortMin = 32768 + (getuid() % 4096)*4;
 	myPortMax = myPortMin + 3;
 }
 
 
 QByteArray NetSocket::serializeMessage(QString message) {
-    QMap<QString, QVariant> map;
+    // initialize message map for serialization
+    MsgMap map;
     map.insert("ChatText", QVariant(message));
     map.insert("Origin", QVariant(origin));
     map.insert("SeqNum", QVariant(seqNum++));
 
+    // add current message to origin port, or create new map if not existing
+    QString originString = QString::number(origin);
+    if(messageDigest.contains(originString)) {
+        messageDigest[originString].insert(map["SeqNum"].toUInt(), map);
+    }
+    else {
+        QMap<quint32, MsgMap> newMessage;
+        messageDigest.insert(originString, newMessage);
+        messageDigest[originString].insert(map["SeqNum"].toUInt(), map);
+    }
+
+    // increment seqNum for port if already contained
+    if (wantMap.contains(originString)) {
+        (wantMap[originString]++);
+    } else {
+        (wantMap.insert(originString, 1));
+    }
+
+
+    // serialize Map
     QByteArray serializedMap;
     QDataStream * dataStream = new QDataStream(&serializedMap, QIODevice::WriteOnly);
     (*dataStream) << map;
@@ -116,7 +115,7 @@ void NetSocket::sendToNeighbor(QByteArray message) {
     } else if (origin == myPortMax) {
          neighbor = origin - 1;
     }
-    // randomly choose neighbor
+    // randomly choose neighbor if not min or max
     else {
         if(rand() % 2) {
             neighbor = origin + 1;
@@ -138,19 +137,105 @@ void NetSocket::receiveMessage() {
     while(socket->hasPendingDatagrams()) {
         datagram.resize(pendingDatagramSize());
         readDatagram(datagram.data(), datagram.size(), &sender, &port);
+        resendPort = port;
 
         // convert ByteArray to map
-        QMap<QString, QVariant> inputMap;
+        MsgMap inputMap;
         QDataStream dataStream(&datagram, QIODevice::ReadOnly);
         dataStream >> inputMap;
+
+        // check status if map has "want", else rumor message
+        if(inputMap.contains("Want")) {
+            QMap<QString, QMap<QString, quint32> > wantMapTemp;
+            QDataStream dataStream(&datagram, QIODevice::ReadOnly);
+            dataStream >> wantMapTemp;
+            checkStatus(wantMapTemp);
+        } else {
+            checkRumor(inputMap);
+        }
 
         chatDialog->displayText(inputMap);
     }
 }
 
+void NetSocket::checkRumor(MsgMap message) {
+    QString originId = message["Origin"].toString();
+    quint32 seqNumRecv = message["SeqNum"].toUInt();
+    bool newMessage = false;
 
-bool NetSocket::bind()
-{
+    if(QString::number(origin) != originId) {
+        // update seqNum for previously seen originId
+        if(wantMap.contains(originId)) {
+            if(seqNumRecv == wantMap[originId]) {
+                newMessage = true;
+            }
+            wantMap[originId] = ++seqNumRecv;
+        }
+        else {
+            newMessage = true;
+            wantMap.insert(originId, ++seqNumRecv);
+        }
+    }
+    else {
+        // update seqNum for previously seen originId
+        if(wantMap.contains(originId)) {
+            wantMap[originId] = ++seqNumRecv;
+        }
+        else {
+            wantMap.insert(originId, ++seqNumRecv);
+        }
+    }
+    if (newMessage) {
+        QString messageString = message["ChatText"].toString();
+        // add to same origin Port if already seen
+        if(messageDigest.contains(originId)) {
+            messageDigest[originId].insert(seqNumRecv, message);
+        } else {
+            QMap<quint32, MsgMap> newMessage;
+            messageDigest.insert(originId, newMessage);
+            messageDigest[originId].insert(seqNumRecv, message);
+        }
+    }
+
+}
+
+
+void NetSocket::checkStatus(QMap<QString, QMap<QString, quint32> > inputWantMap) {
+    bool updated = true;
+
+    QMap<QString, quint32> recvdWantMap = inputWantMap["Want"];
+    MsgMap rumor;
+    for(wantMapIter i = wantMap.begin(); i != wantMap.end(); i++) {
+        QString originId = i.key();
+        quint32 seqNo = wantMap[originId];
+        if(recvdWantMap.contains(originId)) {
+            if(recvdWantMap[originId] != seqNo) {
+                updated = false;
+                if(recvdWantMap[originId] < seqNo) {
+                    rumor = messageDigest[originId][seqNo];
+                }
+
+            }
+        } else {
+            // send all rumors, since nothing contained in map
+            updated = false;
+            rumor = messageDigest[originId][0];
+        }
+    }
+
+    // if not up to date, reserialize and send rumor to origin port
+    if(!updated) {
+        QByteArray serializedMessage;
+        QDataStream * dataStream = new QDataStream(&serializedMessage, QIODevice::WriteOnly);
+        (*dataStream) << rumor;
+        socket->writeDatagram(serializedMessage, QHostAddress::LocalHost, origin);
+        delete dataStream;
+    }
+
+}
+
+
+bool NetSocket::bind() {
 	// Try to bind to each of the range myPortMin..myPortMax in turn.
 	for (int p = myPortMin; p <= myPortMax; p++) {
 		if (QUdpSocket::bind(p)) {
