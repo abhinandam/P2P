@@ -10,9 +10,8 @@
 
 #include "main.hh"
 
-
-ChatDialog * chatDialog;
-NetSocket * socket;
+ChatDialog *chatDialog;
+NetSocket *socket;
 
 int origin;
 int resendPort;
@@ -22,8 +21,7 @@ QMap<QString, quint32> wantMap;
 
 quint32 seqNum;
 
-ChatDialog::ChatDialog()
-{
+ChatDialog::ChatDialog() {
 	setWindowTitle("P2Papp");
 
 	textview = new QTextEdit(this);
@@ -53,11 +51,11 @@ void ChatDialog::gotReturnPressed() {
 	textline->clear();
 }
 
-void ChatDialog::displayText(MsgMap inputMap) {
 
-    if(inputMap.contains("ChatText") && (inputMap.contains("Origin"))) {
-        // don't send to same port
-        if(QString::number(origin) != inputMap["Origin"].toString()) {
+void ChatDialog::displayText(QMap<QString, QVariant> inputMap) {
+    // don't repeat print to sender since we printed on gotReturnPressed()
+    if (inputMap.contains("ChatText") && (inputMap.contains("Origin"))) {
+        if (QString::number(origin) != inputMap["Origin"].toString()) {
             QString message_string = inputMap["ChatText"].toString();
             QString origin_string = inputMap["Origin"].toString();
             QString s = origin_string + ": " + message_string;
@@ -196,7 +194,6 @@ void NetSocket::checkRumor(MsgMap message) {
             messageDigest[originId].insert(seqNumRecv, message);
         }
     }
-
 }
 
 
@@ -251,8 +248,7 @@ bool NetSocket::bind() {
 	return false;
 }
 
-int main(int argc, char **argv)
-{
+int main(int argc, char **argv) {
 	// Initialize Qt toolkit
 	QApplication app(argc,argv);
 
@@ -265,6 +261,7 @@ int main(int argc, char **argv)
 	if (!sock.bind())
 		exit(1);
 
+	// set up some env vars
     socket = &sock;
     chatDialog = &dialog;
     srand(time(0));
@@ -272,4 +269,3 @@ int main(int argc, char **argv)
 	// Enter the Qt main loop; everything else is event driven
 	return app.exec();
 }
-
