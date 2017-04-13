@@ -14,14 +14,18 @@
 ChatDialog *chatDialog;
 NetSocket *socket;
 
+// keep track of ports to send data to
 int origin;
 int resendPort;
 
+// origin port num mapped to message QMap for all prev messages
 QMap<QString, QMap<quint32, MsgMap> > messageDigest;
 QMap<QString, quint32> wantMap;
 QByteArray resendMessage;
 
 quint32 seqNum;
+
+// timers to verify status of messages across nodes
 QTimer timer;
 QTimer antiEntTimer;
 
@@ -47,7 +51,7 @@ void ChatDialog::gotReturnPressed() {
 
     QString message = textline->text();
 
-    // serialized and send
+    // serialize and send
     QByteArray rumor = socket->serializeMessage(message);
     socket->sendToNeighbor(rumor);
 
@@ -93,13 +97,13 @@ QByteArray NetSocket::serializeMessage(QString message) {
     QString originString = QString::number(origin);
     if(messageDigest.contains(originString)) {
         messageDigest[originString].insert(map["SeqNum"].toUInt(), map);
-    } else {
+    } else { // haven't seen this origin yet -- new node conn
         QMap<quint32, MsgMap> newMessage;
         messageDigest.insert(originString, newMessage);
         messageDigest[originString].insert(map["SeqNum"].toUInt(), map);
     }
 
-    // increment seqNum for port if already contained
+    // update wantMap to reflect next desired seqNum for given origin
     if (wantMap.contains(originString)) {
         (wantMap[originString]++);
     } else {
@@ -170,18 +174,18 @@ void NetSocket::receiveMessage() {
 void NetSocket::checkRumor(MsgMap message) {
     QString originId = message["Origin"].toString();
     quint32 seqNumRecv = message["SeqNum"].toUInt();
-    bool newMessage = false;
+    bool isNewMsg = false;
 
     if(QString::number(origin) != originId) {
         // update seqNum for previously seen originId
         if(wantMap.contains(originId)) {
             if(seqNumRecv == wantMap[originId]) {
-                newMessage = true;
+                isNewMsg = true;
             }
             wantMap[originId] = ++seqNumRecv;
         }
         else {
-            newMessage = true;
+            isNewMsg = true;
             wantMap.insert(originId, ++seqNumRecv);
         }
     }
@@ -194,7 +198,7 @@ void NetSocket::checkRumor(MsgMap message) {
             wantMap.insert(originId, ++seqNumRecv);
         }
     }
-    if (newMessage) {
+    if (isNewMsg) {
         QString messageString = message["ChatText"].toString();
         // add to same origin Port if already seen
         if(messageDigest.contains(originId)) {
@@ -223,6 +227,7 @@ void NetSocket::checkStatus(QMap<QString, QMap<QString, quint32> > inputWantMap)
             if(recvdWantMap[originId] != seqNo) {
                 updated = false;
                 if(recvdWantMap[originId] < seqNo) {
+                    // sending peer is behind remote peer, update rumor to send
                     rumor = messageDigest[originId][seqNo];
                 }
 
