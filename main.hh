@@ -40,11 +40,15 @@ public:
     void checkStatus(QMap<QString, QMap<QString, quint32> >);
     void checkRumor(MsgMap);
 
+
 public slots:
     void receiveMessage();
+    void timeOut();
+    void antiEntTimeOut();
 
 private:
     int myPortMin, myPortMax;
+
 
 };
 

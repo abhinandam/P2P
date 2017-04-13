@@ -6,6 +6,7 @@
 #include <QVBoxLayout>
 #include <QApplication>
 #include <QDebug>
+#include <QTimer>
 
 
 #include "main.hh"
@@ -18,8 +19,11 @@ int resendPort;
 
 QMap<QString, QMap<quint32, MsgMap> > messageDigest;
 QMap<QString, quint32> wantMap;
+QByteArray resendMessage;
 
 quint32 seqNum;
+QTimer timer;
+QTimer antiEntTimer;
 
 ChatDialog::ChatDialog() {
 	setWindowTitle("P2Papp");
@@ -67,6 +71,14 @@ void ChatDialog::displayText(QMap<QString, QVariant> inputMap) {
 NetSocket::NetSocket() {
 	myPortMin = 32768 + (getuid() % 4096)*4;
 	myPortMax = myPortMin + 3;
+
+    connect(this, SIGNAL(readyRead()), this, SLOT(receiveMessage()));
+
+    // timer and anti-entropy timer used to ensure all dialogs get messages
+    connect(&timer, SIGNAL(timeout()), this, SLOT(timeOut()));
+    connect(&antiEntTimer, SIGNAL(timeout()), this, SLOT(antiEntTimeOut()));
+    antiEntTimer.start(3000);
+
 }
 
 
@@ -81,8 +93,7 @@ QByteArray NetSocket::serializeMessage(QString message) {
     QString originString = QString::number(origin);
     if(messageDigest.contains(originString)) {
         messageDigest[originString].insert(map["SeqNum"].toUInt(), map);
-    }
-    else {
+    } else {
         QMap<quint32, MsgMap> newMessage;
         messageDigest.insert(originString, newMessage);
         messageDigest[originString].insert(map["SeqNum"].toUInt(), map);
@@ -123,7 +134,6 @@ void NetSocket::sendToNeighbor(QByteArray message) {
         }
     }
     socket->writeDatagram(message, QHostAddress::LocalHost, neighbor);
-    qDebug() << QString("neighbor number " + QString::number(neighbor));
     resendPort = neighbor;
 }
 
@@ -147,6 +157,7 @@ void NetSocket::receiveMessage() {
             QMap<QString, QMap<QString, quint32> > wantMapTemp;
             QDataStream dataStream(&datagram, QIODevice::ReadOnly);
             dataStream >> wantMapTemp;
+            timer.stop();
             checkStatus(wantMapTemp);
         } else {
             checkRumor(inputMap);
@@ -193,6 +204,9 @@ void NetSocket::checkRumor(MsgMap message) {
             messageDigest.insert(originId, newMessage);
             messageDigest[originId].insert(seqNumRecv, message);
         }
+        QDataStream * dataStream = new QDataStream(&resendMessage, QIODevice::WriteOnly);
+        (*dataStream) << message;
+        delete dataStream;
     }
 }
 
@@ -231,6 +245,24 @@ void NetSocket::checkStatus(QMap<QString, QMap<QString, quint32> > inputWantMap)
 
 }
 
+void NetSocket::timeOut() {
+    socket->writeDatagram(resendMessage, QHostAddress::LocalHost, resendPort);
+    timer.start(2000);
+}
+
+void NetSocket::antiEntTimeOut() {
+    // send status message to random neighbor and start timer
+    QMap<QString, QMap<QString, quint32> > status;
+    status.insert("Want", wantMap);
+
+    QByteArray serializedStatus;
+    QDataStream *dataStream = new QDataStream(&serializedStatus, QIODevice::WriteOnly);
+    (*dataStream) << status;
+    delete dataStream;
+
+    sendToNeighbor(serializedStatus);
+    antiEntTimer.start(10000);
+}
 
 bool NetSocket::bind() {
 	// Try to bind to each of the range myPortMin..myPortMax in turn.
@@ -238,7 +270,6 @@ bool NetSocket::bind() {
 		if (QUdpSocket::bind(p)) {
             origin = p;
 			qDebug() << "bound to UDP port " << p;
-            connect(this, SIGNAL(readyRead()), this, SLOT(receiveMessage()));
 			return true;
 		}
 	}

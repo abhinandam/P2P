@@ -98,7 +98,7 @@ static const uint qt_meta_data_NetSocket[] = {
        6,       // revision
        0,       // classname
        0,    0, // classinfo
-       1,   14, // methods
+       3,   14, // methods
        0,    0, // properties
        0,    0, // enums/sets
        0,    0, // constructors
@@ -107,12 +107,15 @@ static const uint qt_meta_data_NetSocket[] = {
 
  // slots: signature, parameters, type, tag, flags
       11,   10,   10,   10, 0x0a,
+      28,   10,   10,   10, 0x0a,
+      38,   10,   10,   10, 0x0a,
 
        0        // eod
 };
 
 static const char qt_meta_stringdata_NetSocket[] = {
-    "NetSocket\0\0receiveMessage()\0"
+    "NetSocket\0\0receiveMessage()\0timeOut()\0"
+    "antiEntTimeOut()\0"
 };
 
 void NetSocket::qt_static_metacall(QObject *_o, QMetaObject::Call _c, int _id, void **_a)
@@ -122,6 +125,8 @@ void NetSocket::qt_static_metacall(QObject *_o, QMetaObject::Call _c, int _id, v
         NetSocket *_t = static_cast<NetSocket *>(_o);
         switch (_id) {
         case 0: _t->receiveMessage(); break;
+        case 1: _t->timeOut(); break;
+        case 2: _t->antiEntTimeOut(); break;
         default: ;
         }
     }
@@ -160,9 +165,9 @@ int NetSocket::qt_metacall(QMetaObject::Call _c, int _id, void **_a)
     if (_id < 0)
         return _id;
     if (_c == QMetaObject::InvokeMetaMethod) {
-        if (_id < 1)
+        if (_id < 3)
             qt_static_metacall(this, _c, _id, _a);
-        _id -= 1;
+        _id -= 3;
     }
     return _id;
 }
